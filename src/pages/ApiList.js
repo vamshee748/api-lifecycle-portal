@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import api, { createApi } from '../api';
+import api, { createApi, updateApi, deleteApi } from '../api';
 import Loader from '../components/Loader';
 
 const ApiList = () => {
@@ -13,6 +13,18 @@ const ApiList = () => {
   const [isCreating, setIsCreating] = useState(false);
   const [createError, setCreateError] = useState(null);
   const [createSuccess, setCreateSuccess] = useState(false);
+  const [showEditForm, setShowEditForm] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editError, setEditError] = useState(null);
+  const [editSuccess, setEditSuccess] = useState(false);
+  const [editingApiId, setEditingApiId] = useState(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState(null);
+  const [deletingApiId, setDeletingApiId] = useState(null);
+  const [deletingApiName, setDeletingApiName] = useState('');
+  const [sortField, setSortField] = useState('name');
+  const [sortDirection, setSortDirection] = useState('asc');
   
   // Form state
   const [formData, setFormData] = useState({
@@ -52,6 +64,25 @@ const ApiList = () => {
 
   const handleRefresh = () => {
     fetchApis();
+  };
+
+  // Sorting handler
+  const handleSort = (field) => {
+    if (sortField === field) {
+      // Toggle direction if clicking the same field
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      // Set new field and default to ascending
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  const getSortIcon = (field) => {
+    if (sortField !== field) {
+      return '↕'; // Both arrows when not sorted
+    }
+    return sortDirection === 'asc' ? '↑' : '↓';
   };
 
   // Form handling functions
@@ -168,12 +199,155 @@ const ApiList = () => {
     }
   };
 
+  // Edit form handlers
+  const handleOpenEditForm = (apiItem) => {
+    // Populate form with existing API data
+    setFormData({
+      name: apiItem.name || '',
+      description: apiItem.description || '',
+      version: apiItem.version || '1.0.0',
+      status: apiItem.status || 'development',
+      base_url: apiItem.base_url || '',
+      tags: Array.isArray(apiItem.tags) ? apiItem.tags.join(', ') : ''
+    });
+    setEditingApiId(apiItem.id);
+    setFormErrors({});
+    setEditError(null);
+    setEditSuccess(false);
+    setShowEditForm(true);
+  };
+
+  const handleCloseEditForm = () => {
+    setShowEditForm(false);
+    resetForm();
+    setEditingApiId(null);
+  };
+
+  const handleSubmitEdit = async (e) => {
+    e.preventDefault();
+    
+    if (!validateForm()) {
+      return;
+    }
+    
+    if (!editingApiId) {
+      setEditError('No API selected for editing');
+      return;
+    }
+    
+    setIsEditing(true);
+    setEditError(null);
+    setEditSuccess(false);
+    
+    try {
+      // Convert tags string to array
+      const tagsArray = formData.tags
+        ? formData.tags.split(',').map(tag => tag.trim()).filter(tag => tag)
+        : [];
+      
+      const apiData = {
+        ...formData,
+        tags: tagsArray
+      };
+      
+      await updateApi(editingApiId, apiData);
+      
+      // Show success message
+      setEditSuccess(true);
+      
+      // Refresh the API list
+      await fetchApis();
+      
+      // Close form after a short delay
+      setTimeout(() => {
+        handleCloseEditForm();
+      }, 1500);
+      
+    } catch (err) {
+      setEditError(err.message || 'Failed to update API');
+      console.error('Error updating API:', err);
+    } finally {
+      setIsEditing(false);
+    }
+  };
+
+  // Delete form handlers
+  const handleOpenDeleteConfirm = (apiItem) => {
+    setDeletingApiId(apiItem.id);
+    setDeletingApiName(apiItem.name || 'this API');
+    setDeleteError(null);
+    setShowDeleteConfirm(true);
+  };
+
+  const handleCloseDeleteConfirm = () => {
+    if (!isDeleting) {
+      setShowDeleteConfirm(false);
+      setDeletingApiId(null);
+      setDeletingApiName('');
+      setDeleteError(null);
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deletingApiId) {
+      setDeleteError('No API selected for deletion');
+      return;
+    }
+
+    setIsDeleting(true);
+    setDeleteError(null);
+
+    try {
+      await deleteApi(deletingApiId);
+      
+      // Refresh the API list
+      await fetchApis();
+      
+      // Close confirmation dialog
+      setShowDeleteConfirm(false);
+      setDeletingApiId(null);
+      setDeletingApiName('');
+      
+    } catch (err) {
+      const errorMessage = err.response?.data?.message || err.message || 'Failed to delete API';
+      setDeleteError(errorMessage);
+      console.error('Error deleting API:', err);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   // Filter and search logic
   const filteredApis = apis.filter((apiItem) => {
     const matchesSearch = apiItem.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          apiItem.description?.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesFilter = filterStatus === 'all' || apiItem.status === filterStatus;
     return matchesSearch && matchesFilter;
+  });
+
+  // Sort the filtered APIs
+  const sortedApis = [...filteredApis].sort((a, b) => {
+    let aValue = a[sortField];
+    let bValue = b[sortField];
+
+    // Handle null/undefined values
+    if (aValue == null) aValue = '';
+    if (bValue == null) bValue = '';
+
+    // Handle different data types
+    if (sortField === 'updated_at' || sortField === 'created_at') {
+      aValue = new Date(aValue).getTime();
+      bValue = new Date(bValue).getTime();
+    } else if (typeof aValue === 'string') {
+      aValue = aValue.toLowerCase();
+      bValue = bValue.toLowerCase();
+    }
+
+    if (sortDirection === 'asc') {
+      return aValue > bValue ? 1 : aValue < bValue ? -1 : 0;
+    } else {
+      return aValue < bValue ? 1 : aValue > bValue ? -1 : 0;
+    }
   });
 
   if (loading) {
@@ -363,6 +537,213 @@ const ApiList = () => {
         </div>
       )}
 
+      {/* Edit API Modal */}
+      {showEditForm && (
+        <div className="modal-overlay" onClick={handleCloseEditForm}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Edit API</h2>
+              <button 
+                className="modal-close" 
+                onClick={handleCloseEditForm}
+                aria-label="Close"
+              >
+                &times;
+              </button>
+            </div>
+            
+            <form onSubmit={handleSubmitEdit} className="create-api-form">
+              {editError && (
+                <div className="alert alert-error">
+                  {editError}
+                </div>
+              )}
+              
+              {editSuccess && (
+                <div className="alert alert-success">
+                  API updated successfully!
+                </div>
+              )}
+
+              <div className="form-group">
+                <label htmlFor="edit-name">
+                  API Name <span className="required">*</span>
+                </label>
+                <input
+                  type="text"
+                  id="edit-name"
+                  name="name"
+                  value={formData.name}
+                  onChange={handleInputChange}
+                  placeholder="Enter API name"
+                  className={formErrors.name ? 'input-error' : ''}
+                  disabled={isEditing}
+                />
+                {formErrors.name && (
+                  <span className="error-message">{formErrors.name}</span>
+                )}
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="edit-description">Description</label>
+                <textarea
+                  id="edit-description"
+                  name="description"
+                  value={formData.description}
+                  onChange={handleInputChange}
+                  placeholder="Enter API description"
+                  rows="3"
+                  disabled={isEditing}
+                />
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label htmlFor="edit-version">
+                    Version <span className="required">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    id="edit-version"
+                    name="version"
+                    value={formData.version}
+                    onChange={handleInputChange}
+                    placeholder="1.0.0"
+                    className={formErrors.version ? 'input-error' : ''}
+                    disabled={isEditing}
+                  />
+                  {formErrors.version && (
+                    <span className="error-message">{formErrors.version}</span>
+                  )}
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="edit-status">Status</label>
+                  <select
+                    id="edit-status"
+                    name="status"
+                    value={formData.status}
+                    onChange={handleInputChange}
+                    disabled={isEditing}
+                  >
+                    <option value="development">Development</option>
+                    <option value="active">Active</option>
+                    <option value="deprecated">Deprecated</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="edit-base_url">Base URL</label>
+                <input
+                  type="text"
+                  id="edit-base_url"
+                  name="base_url"
+                  value={formData.base_url}
+                  onChange={handleInputChange}
+                  placeholder="https://api.example.com"
+                  className={formErrors.base_url ? 'input-error' : ''}
+                  disabled={isEditing}
+                />
+                {formErrors.base_url && (
+                  <span className="error-message">{formErrors.base_url}</span>
+                )}
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="edit-tags">Tags</label>
+                <input
+                  type="text"
+                  id="edit-tags"
+                  name="tags"
+                  value={formData.tags}
+                  onChange={handleInputChange}
+                  placeholder="Enter tags separated by commas"
+                  disabled={isEditing}
+                />
+                <small className="form-help">
+                  Separate multiple tags with commas (e.g., REST, Public, v1)
+                </small>
+              </div>
+
+              <div className="form-actions">
+                <button
+                  type="button"
+                  onClick={handleCloseEditForm}
+                  className="btn-secondary"
+                  disabled={isEditing}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn-primary"
+                  disabled={isEditing}
+                >
+                  {isEditing ? 'Updating...' : 'Update API'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="modal-overlay" onClick={handleCloseDeleteConfirm}>
+          <div className="modal-content modal-small" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Confirm Delete</h2>
+              <button 
+                className="modal-close" 
+                onClick={handleCloseDeleteConfirm}
+                aria-label="Close"
+                disabled={isDeleting}
+              >
+                &times;
+              </button>
+            </div>
+            
+            <div className="modal-body">
+              {deleteError && (
+                <div className="alert alert-error">
+                  {deleteError}
+                </div>
+              )}
+
+              <div className="delete-warning">
+                <div className="warning-icon">⚠️</div>
+                <p className="warning-text">
+                  Are you sure you want to delete <strong>{deletingApiName}</strong>?
+                </p>
+                <p className="warning-subtext">
+                  This action cannot be undone. All associated data will be permanently removed.
+                </p>
+              </div>
+
+              <div className="form-actions">
+                <button
+                  type="button"
+                  onClick={handleCloseDeleteConfirm}
+                  className="btn-secondary"
+                  disabled={isDeleting}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmDelete}
+                  className="btn-danger"
+                  disabled={isDeleting}
+                >
+                  {isDeleting ? 'Deleting...' : 'Delete API'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="api-list-controls">
         <div className="search-bar">
           <input
@@ -400,48 +781,140 @@ const ApiList = () => {
           </p>
         </div>
       ) : (
-        <div className="api-grid">
-          {filteredApis.map((apiItem) => (
-            <div
-              key={apiItem.id}
-              className="api-card"
-              onClick={() => handleApiClick(apiItem.id)}
-              role="button"
-              tabIndex={0}
-              onKeyPress={(e) => e.key === 'Enter' && handleApiClick(apiItem.id)}
-            >
-              <div className="api-card-header">
-                <h3>{apiItem.name || 'Unnamed API'}</h3>
-                <span className={`status-badge status-${apiItem.status || 'unknown'}`}>
-                  {apiItem.status || 'Unknown'}
-                </span>
-              </div>
-              
-              <p className="api-description">
-                {apiItem.description || 'No description available'}
-              </p>
-              
-              <div className="api-meta">
-                <span className="api-version">
-                  v{apiItem.version || '1.0.0'}
-                </span>
-                <span className="api-endpoints">
-                  {apiItem.endpoint_count || 0} endpoints
-                </span>
-              </div>
-              
-              {apiItem.updated_at && (
-                <div className="api-updated">
-                  Last updated: {new Date(apiItem.updated_at).toLocaleDateString()}
-                </div>
-              )}
-            </div>
-          ))}
+        <div className="table-container">
+          <table className="api-table">
+            <thead>
+              <tr>
+                <th 
+                  className="sortable" 
+                  onClick={() => handleSort('name')}
+                  aria-sort={sortField === 'name' ? sortDirection : 'none'}
+                >
+                  <div className="th-content">
+                    <span>Name</span>
+                    <span className="sort-icon">{getSortIcon('name')}</span>
+                  </div>
+                </th>
+                <th className="description-column">Description</th>
+                <th 
+                  className="sortable" 
+                  onClick={() => handleSort('version')}
+                  aria-sort={sortField === 'version' ? sortDirection : 'none'}
+                >
+                  <div className="th-content">
+                    <span>Version</span>
+                    <span className="sort-icon">{getSortIcon('version')}</span>
+                  </div>
+                </th>
+                <th 
+                  className="sortable" 
+                  onClick={() => handleSort('status')}
+                  aria-sort={sortField === 'status' ? sortDirection : 'none'}
+                >
+                  <div className="th-content">
+                    <span>Status</span>
+                    <span className="sort-icon">{getSortIcon('status')}</span>
+                  </div>
+                </th>
+                <th className="text-center">Endpoints</th>
+                <th 
+                  className="sortable" 
+                  onClick={() => handleSort('updated_at')}
+                  aria-sort={sortField === 'updated_at' ? sortDirection : 'none'}
+                >
+                  <div className="th-content">
+                    <span>Last Updated</span>
+                    <span className="sort-icon">{getSortIcon('updated_at')}</span>
+                  </div>
+                </th>
+                <th className="actions-column">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedApis.map((apiItem) => (
+                <tr 
+                  key={apiItem.id}
+                  className="api-row"
+                  onClick={() => handleApiClick(apiItem.id)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyPress={(e) => e.key === 'Enter' && handleApiClick(apiItem.id)}
+                >
+                  <td className="api-name" data-label="Name">
+                    <strong>{apiItem.name || 'Unnamed API'}</strong>
+                  </td>
+                  <td className="api-description" data-label="Description">
+                    {apiItem.description || 'No description available'}
+                  </td>
+                  <td className="api-version" data-label="Version">
+                    v{apiItem.version || '1.0.0'}
+                  </td>
+                  <td className="api-status" data-label="Status">
+                    <span className={`status-badge status-${apiItem.status || 'unknown'}`}>
+                      {apiItem.status || 'Unknown'}
+                    </span>
+                  </td>
+                  <td className="text-center" data-label="Endpoints">
+                    {apiItem.endpoint_count || 0}
+                  </td>
+                  <td className="api-date" data-label="Last Updated">
+                    {apiItem.updated_at 
+                      ? new Date(apiItem.updated_at).toLocaleDateString('en-US', {
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric'
+                        })
+                      : 'N/A'
+                    }
+                  </td>
+                  <td className="api-actions" data-label="Actions">
+                    <div className="action-buttons">
+                      <button 
+                        className="btn-edit"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenEditForm(apiItem);
+                        }}
+                        aria-label={`Edit ${apiItem.name}`}
+                        title="Edit API"
+                      >
+                        Edit
+                      </button>
+                      <button 
+                        className="btn-delete"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenDeleteConfirm(apiItem);
+                        }}
+                        aria-label={`Delete ${apiItem.name}`}
+                        title="Delete API"
+                      >
+                        Delete
+                      </button>
+                      <button 
+                        className="btn-view"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleApiClick(apiItem.id);
+                        }}
+                        aria-label={`View ${apiItem.name}`}
+                        title="View API details"
+                      >
+                        View
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
       <div className="api-list-footer">
-        <p>Total APIs: {filteredApis.length}</p>
+        <p>
+          Showing {sortedApis.length} of {apis.length} API{apis.length !== 1 ? 's' : ''}
+        </p>
       </div>
     </div>
   );

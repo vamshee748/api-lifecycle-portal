@@ -150,4 +150,55 @@ export const deleteApi = async (apiId) => {
   }
 };
 
+/**
+ * Create a new change log entry
+ * @param {Object} changeData - The change data to create
+ * @param {string} changeData.title - Change title (required)
+ * @param {string} changeData.description - Change description
+ * @param {string} changeData.type - Change type (required)
+ * @param {string} changeData.api_id - Associated API ID
+ * @param {string} changeData.version - Version number
+ * @param {string} changeData.date - Change date
+ * @param {string} changeData.author - Author name
+ * @returns {Promise} - Promise resolving to created change
+ */
+export const createChange = async (changeData) => {
+  try {
+    // Validate required fields
+    if (!changeData.title || changeData.title.trim() === '') {
+      throw new Error('Change title is required');
+    }
+
+    if (!changeData.type || changeData.type.trim() === '') {
+      throw new Error('Change type is required');
+    }
+
+    // Prepare the request payload
+    const payload = {
+      title: changeData.title.trim(),
+      description: changeData.description?.trim() || '',
+      type: changeData.type.toLowerCase(),
+      api_id: changeData.api_id || null,
+      version: changeData.version?.trim() || '',
+      date: changeData.date || new Date().toISOString(),
+      author: changeData.author?.trim() || '',
+      ...changeData // Include any additional fields
+    };
+
+    const response = await api.post('/api/v1/changes', payload);
+    return response.data;
+  } catch (error) {
+    if (error.response) {
+      // Server responded with an error
+      throw new Error(error.response.data?.message || 'Failed to create change log');
+    } else if (error.request) {
+      // Request was made but no response received
+      throw new Error('No response from server. Please check your connection.');
+    } else {
+      // Something else happened
+      throw error;
+    }
+  }
+};
+
 export default api;

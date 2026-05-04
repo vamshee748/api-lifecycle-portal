@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import api from '../api';
+import api, { createChange } from '../api';
 import Loader from '../components/Loader';
 
 const Changes = () => {
@@ -13,6 +13,22 @@ const Changes = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOrder, setSortOrder] = useState('desc');
   const [viewMode, setViewMode] = useState('timeline'); // timeline or list
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [createError, setCreateError] = useState(null);
+  const [createSuccess, setCreateSuccess] = useState(false);
+  
+  // Form state
+  const [formData, setFormData] = useState({
+    title: '',
+    description: '',
+    type: 'feature',
+    api_id: '',
+    version: '',
+    author: ''
+  });
+  
+  const [formErrors, setFormErrors] = useState({});
   
   const navigate = useNavigate();
 
@@ -48,6 +64,106 @@ const Changes = () => {
   const handleApiClick = (apiId) => {
     if (apiId) {
       navigate(`/api/${apiId}`);
+    }
+  };
+
+  // Form handling functions
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+    
+    // Clear error for this field when user starts typing
+    if (formErrors[name]) {
+      setFormErrors(prev => ({
+        ...prev,
+        [name]: ''
+      }));
+    }
+  };
+
+  const validateForm = () => {
+    const errors = {};
+    
+    if (!formData.title.trim()) {
+      errors.title = 'Title is required';
+    } else if (formData.title.trim().length < 3) {
+      errors.title = 'Title must be at least 3 characters';
+    }
+    
+    if (!formData.type) {
+      errors.type = 'Change type is required';
+    }
+    
+    if (formData.version && !/^\d+\.\d+\.\d+$/.test(formData.version.trim())) {
+      errors.version = 'Version must be in format X.Y.Z (e.g., 1.0.0)';
+    }
+    
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const resetForm = () => {
+    setFormData({
+      title: '',
+      description: '',
+      type: 'feature',
+      api_id: '',
+      version: '',
+      author: ''
+    });
+    setFormErrors({});
+    setCreateError(null);
+    setCreateSuccess(false);
+  };
+
+  const handleOpenCreateForm = () => {
+    resetForm();
+    setShowCreateForm(true);
+  };
+
+  const handleCloseCreateForm = () => {
+    setShowCreateForm(false);
+    resetForm();
+  };
+
+  const handleSubmitCreate = async (e) => {
+    e.preventDefault();
+    
+    if (!validateForm()) {
+      return;
+    }
+    
+    setIsCreating(true);
+    setCreateError(null);
+    setCreateSuccess(false);
+    
+    try {
+      const changePayload = {
+        ...formData,
+        date: new Date().toISOString()
+      };
+      
+      await createChange(changePayload);
+      
+      // Show success message
+      setCreateSuccess(true);
+      
+      // Refresh the changes list
+      await fetchData();
+      
+      // Close form after a short delay
+      setTimeout(() => {
+        handleCloseCreateForm();
+      }, 1500);
+      
+    } catch (err) {
+      setCreateError(err.message || 'Failed to create change log');
+      console.error('Error creating change:', err);
+    } finally {
+      setIsCreating(false);
     }
   };
 
@@ -141,11 +257,175 @@ const Changes = () => {
           <p className="changes-subtitle">Track API modifications, updates, and version history</p>
         </div>
         <div className="changes-header-actions">
+          <button onClick={handleOpenCreateForm} className="btn-primary" title="Log new change">
+            + Log Change
+          </button>
           <button onClick={handleRefresh} className="btn-secondary" title="Refresh">
             🔄 Refresh
           </button>
         </div>
       </div>
+
+      {/* Create Change Modal */}
+      {showCreateForm && (
+        <div className="modal-overlay" onClick={handleCloseCreateForm}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Log New Change</h2>
+              <button 
+                className="modal-close" 
+                onClick={handleCloseCreateForm}
+                aria-label="Close"
+              >
+                &times;
+              </button>
+            </div>
+            
+            <form onSubmit={handleSubmitCreate} className="create-api-form">
+              {createError && (
+                <div className="alert alert-error">
+                  {createError}
+                </div>
+              )}
+              
+              {createSuccess && (
+                <div className="alert alert-success">
+                  Change logged successfully!
+                </div>
+              )}
+
+              <div className="form-group">
+                <label htmlFor="change-title">
+                  Change Title <span className="required">*</span>
+                </label>
+                <input
+                  type="text"
+                  id="change-title"
+                  name="title"
+                  value={formData.title}
+                  onChange={handleInputChange}
+                  placeholder="Enter change title"
+                  className={formErrors.title ? 'input-error' : ''}
+                  disabled={isCreating}
+                />
+                {formErrors.title && (
+                  <span className="error-message">{formErrors.title}</span>
+                )}
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="change-description">Description</label>
+                <textarea
+                  id="change-description"
+                  name="description"
+                  value={formData.description}
+                  onChange={handleInputChange}
+                  placeholder="Describe the change in detail"
+                  rows="4"
+                  disabled={isCreating}
+                />
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label htmlFor="change-type">
+                    Change Type <span className="required">*</span>
+                  </label>
+                  <select
+                    id="change-type"
+                    name="type"
+                    value={formData.type}
+                    onChange={handleInputChange}
+                    className={formErrors.type ? 'input-error' : ''}
+                    disabled={isCreating}
+                  >
+                    <option value="feature">✨ New Feature</option>
+                    <option value="breaking">⚠️ Breaking Change</option>
+                    <option value="deprecation">📛 Deprecation</option>
+                    <option value="fix">🔧 Bug Fix</option>
+                    <option value="security">🔒 Security Update</option>
+                    <option value="performance">⚡ Performance</option>
+                  </select>
+                  {formErrors.type && (
+                    <span className="error-message">{formErrors.type}</span>
+                  )}
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="change-api">Related API</label>
+                  <select
+                    id="change-api"
+                    name="api_id"
+                    value={formData.api_id}
+                    onChange={handleInputChange}
+                    disabled={isCreating}
+                  >
+                    <option value="">None</option>
+                    {apis.map((apiItem) => (
+                      <option key={apiItem.id} value={apiItem.id}>
+                        {apiItem.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="form-group">
+                  <label htmlFor="change-version">Version</label>
+                  <input
+                    type="text"
+                    id="change-version"
+                    name="version"
+                    value={formData.version}
+                    onChange={handleInputChange}
+                    placeholder="1.0.0"
+                    className={formErrors.version ? 'input-error' : ''}
+                    disabled={isCreating}
+                  />
+                  {formErrors.version && (
+                    <span className="error-message">{formErrors.version}</span>
+                  )}
+                  <small className="form-help">
+                    Format: X.Y.Z (e.g., 1.0.0)
+                  </small>
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="change-author">Author</label>
+                  <input
+                    type="text"
+                    id="change-author"
+                    name="author"
+                    value={formData.author}
+                    onChange={handleInputChange}
+                    placeholder="Your name"
+                    disabled={isCreating}
+                  />
+                </div>
+              </div>
+
+              <div className="form-actions">
+                <button
+                  type="button"
+                  onClick={handleCloseCreateForm}
+                  className="btn-secondary"
+                  disabled={isCreating}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn-primary"
+                  disabled={isCreating}
+                >
+                  {isCreating ? 'Logging Change...' : 'Log Change'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       <div className="changes-controls">
         <div className="search-bar">

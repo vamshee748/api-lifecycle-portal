@@ -6,6 +6,7 @@ const Sidebar = () => {
     { path: '/dashboard', icon: '📊', label: 'Dashboard' },
     { path: '/apis', icon: '🔌', label: 'API Catalog' },
     { path: '/changes', icon: '📝', label: 'Change Log' },
+    { path: '/policies', icon: '📋', label: 'Policies' },
   ];
 
   return (

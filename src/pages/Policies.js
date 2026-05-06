@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import api from '../api';
+import api, { validatePolicy, getAllPolicyValidations, getPolicyValidation, validateAllPolicies, getValidationSummary } from '../api';
 import Loader from '../components/Loader';
 
 const Policies = () => {
@@ -13,6 +13,15 @@ const Policies = () => {
   const [sortField, setSortField] = useState('name');
   const [sortDirection, setSortDirection] = useState('asc');
   const [viewMode, setViewMode] = useState('grid'); // grid or list
+  
+  // Validation state
+  const [validationStatus, setValidationStatus] = useState({});
+  const [validationSummary, setValidationSummary] = useState(null);
+  const [isValidating, setIsValidating] = useState(false);
+  const [validationError, setValidationError] = useState(null);
+  const [showValidationModal, setShowValidationModal] = useState(false);
+  const [selectedValidation, setSelectedValidation] = useState(null);
+  const [autoRefreshValidation, setAutoRefreshValidation] = useState(false);
   
   // Create form state
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -57,7 +66,18 @@ const Policies = () => {
 
   useEffect(() => {
     fetchPolicies();
+    fetchValidationData();
   }, []);
+
+  // Auto-refresh validation data every 30 seconds if enabled
+  useEffect(() => {
+    if (autoRefreshValidation) {
+      const interval = setInterval(() => {
+        fetchValidationData();
+      }, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [autoRefreshValidation]);
 
   const fetchPolicies = async () => {
     try {
@@ -70,6 +90,149 @@ const Policies = () => {
       console.error('Error fetching policies:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Fetch validation data for all policies
+  const fetchValidationData = async () => {
+    try {
+      setValidationError(null);
+      
+      // Fetch validation status for all policies
+      const [validationsResponse, summaryResponse] = await Promise.allSettled([
+        getAllPolicyValidations(),
+        getValidationSummary()
+      ]);
+
+      if (validationsResponse.status === 'fulfilled') {
+        // Convert array to object keyed by policy ID for easy lookup
+        const validationMap = {};
+        if (Array.isArray(validationsResponse.value)) {
+          validationsResponse.value.forEach(validation => {
+            if (validation.policy_id) {
+              validationMap[validation.policy_id] = validation;
+            }
+          });
+        }
+        setValidationStatus(validationMap);
+      }
+
+      if (summaryResponse.status === 'fulfilled') {
+        setValidationSummary(summaryResponse.value);
+      }
+    } catch (err) {
+      console.error('Error fetching validation data:', err);
+      setValidationError('Failed to load validation status');
+    }
+  };
+
+  // Validate a single policy
+  const handleValidatePolicy = async (policyId) => {
+    try {
+      setIsValidating(true);
+      setValidationError(null);
+      
+      const result = await validatePolicy(policyId);
+      
+      // Update validation status for this policy
+      setValidationStatus(prev => ({
+        ...prev,
+        [policyId]: result
+      }));
+      
+      // Refresh summary
+      await fetchValidationData();
+      
+    } catch (err) {
+      console.error('Error validating policy:', err);
+      setValidationError(err.message || 'Failed to validate policy');
+    } finally {
+      setIsValidating(false);
+    }
+  };
+
+  // Validate all policies
+  const handleValidateAll = async () => {
+    try {
+      setIsValidating(true);
+      setValidationError(null);
+      
+      await validateAllPolicies();
+      
+      // Refresh all validation data
+      await fetchValidationData();
+      
+    } catch (err) {
+      console.error('Error validating all policies:', err);
+      setValidationError(err.message || 'Failed to validate all policies');
+    } finally {
+      setIsValidating(false);
+    }
+  };
+
+  // Show detailed validation results
+  const handleShowValidationDetails = async (policy) => {
+    try {
+      setValidationError(null);
+      const validation = await getPolicyValidation(policy.id);
+      setSelectedValidation({
+        policy,
+        validation
+      });
+      setShowValidationModal(true);
+    } catch (err) {
+      console.error('Error fetching validation details:', err);
+      setValidationError('Failed to load validation details');
+    }
+  };
+
+  const handleCloseValidationModal = () => {
+    setShowValidationModal(false);
+    setSelectedValidation(null);
+  };
+
+  // Get validation status badge for a policy
+  const getValidationBadge = (policyId) => {
+    const validation = validationStatus[policyId];
+    
+    if (!validation) {
+      return {
+        label: 'Not Validated',
+        className: 'validation-not-checked',
+        icon: '⚪'
+      };
+    }
+
+    const complianceRate = validation.compliance_rate || 0;
+    
+    if (complianceRate >= 90) {
+      return {
+        label: 'Excellent',
+        className: 'validation-excellent',
+        icon: '✅',
+        rate: complianceRate
+      };
+    } else if (complianceRate >= 70) {
+      return {
+        label: 'Good',
+        className: 'validation-good',
+        icon: '✔️',
+        rate: complianceRate
+      };
+    } else if (complianceRate >= 50) {
+      return {
+        label: 'Warning',
+        className: 'validation-warning',
+        icon: '⚠️',
+        rate: complianceRate
+      };
+    } else {
+      return {
+        label: 'Critical',
+        className: 'validation-critical',
+        icon: '❌',
+        rate: complianceRate
+      };
     }
   };
 
@@ -425,6 +588,269 @@ const Policies = () => {
           </button>
         </div>
       </div>
+
+      {/* Validation Dashboard */}
+      <div className="validation-dashboard">
+        <div className="validation-dashboard-header">
+          <h2>Policy Validation Status</h2>
+          <div className="validation-actions">
+            <label className="auto-refresh-toggle">
+              <input
+                type="checkbox"
+                checked={autoRefreshValidation}
+                onChange={(e) => setAutoRefreshValidation(e.target.checked)}
+              />
+              <span>Auto-refresh</span>
+            </label>
+            <button 
+              onClick={handleValidateAll} 
+              className="btn-primary"
+              disabled={isValidating}
+              title="Validate all policies"
+            >
+              {isValidating ? '⏳ Validating...' : '🔍 Validate All'}
+            </button>
+            <button 
+              onClick={fetchValidationData} 
+              className="btn-secondary"
+              title="Refresh validation data"
+            >
+              🔄 Refresh
+            </button>
+          </div>
+        </div>
+
+        {validationError && (
+          <div className="alert alert-error">
+            {validationError}
+          </div>
+        )}
+
+        {validationSummary && (
+          <div className="validation-summary-grid">
+            <div className="validation-summary-card">
+              <div className="summary-icon excellent">✅</div>
+              <div className="summary-content">
+                <div className="summary-value">{validationSummary.total_policies || 0}</div>
+                <div className="summary-label">Total Policies</div>
+              </div>
+            </div>
+            
+            <div className="validation-summary-card">
+              <div className="summary-icon good">✔️</div>
+              <div className="summary-content">
+                <div className="summary-value">{validationSummary.validated_policies || 0}</div>
+                <div className="summary-label">Validated</div>
+              </div>
+            </div>
+            
+            <div className="validation-summary-card">
+              <div className="summary-icon warning">⚠️</div>
+              <div className="summary-content">
+                <div className="summary-value">{validationSummary.policies_with_issues || 0}</div>
+                <div className="summary-label">With Issues</div>
+              </div>
+            </div>
+            
+            <div className="validation-summary-card">
+              <div className="summary-icon">
+                <div className="summary-progress-ring">
+                  <svg width="50" height="50">
+                    <circle
+                      cx="25"
+                      cy="25"
+                      r="20"
+                      fill="none"
+                      stroke="#e2e8f0"
+                      strokeWidth="4"
+                    />
+                    <circle
+                      cx="25"
+                      cy="25"
+                      r="20"
+                      fill="none"
+                      stroke={
+                        validationSummary.average_compliance >= 90 ? '#10b981' :
+                        validationSummary.average_compliance >= 70 ? '#3b82f6' :
+                        validationSummary.average_compliance >= 50 ? '#f59e0b' : '#ef4444'
+                      }
+                      strokeWidth="4"
+                      strokeDasharray={`${(validationSummary.average_compliance || 0) * 1.257} 125.7`}
+                      strokeDashoffset="0"
+                      transform="rotate(-90 25 25)"
+                    />
+                  </svg>
+                  <div className="progress-text">
+                    {Math.round(validationSummary.average_compliance || 0)}%
+                  </div>
+                </div>
+              </div>
+              <div className="summary-content">
+                <div className="summary-label">Avg. Compliance</div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Validation Details Modal */}
+      {showValidationModal && selectedValidation && (
+        <div className="modal-overlay" onClick={handleCloseValidationModal}>
+          <div className="modal-content modal-large" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Validation Results: {selectedValidation.policy.name}</h2>
+              <button 
+                className="modal-close" 
+                onClick={handleCloseValidationModal}
+                aria-label="Close"
+              >
+                &times;
+              </button>
+            </div>
+            
+            <div className="validation-details-view">
+              <div className="validation-overview">
+                <div className="validation-score-card">
+                  <div className="score-circle">
+                    <svg width="120" height="120">
+                      <circle
+                        cx="60"
+                        cy="60"
+                        r="50"
+                        fill="none"
+                        stroke="#e2e8f0"
+                        strokeWidth="8"
+                      />
+                      <circle
+                        cx="60"
+                        cy="60"
+                        r="50"
+                        fill="none"
+                        stroke={
+                          selectedValidation.validation.compliance_rate >= 90 ? '#10b981' :
+                          selectedValidation.validation.compliance_rate >= 70 ? '#3b82f6' :
+                          selectedValidation.validation.compliance_rate >= 50 ? '#f59e0b' : '#ef4444'
+                        }
+                        strokeWidth="8"
+                        strokeDasharray={`${(selectedValidation.validation.compliance_rate || 0) * 3.14} 314`}
+                        strokeDashoffset="0"
+                        transform="rotate(-90 60 60)"
+                      />
+                    </svg>
+                    <div className="score-text">
+                      <div className="score-value">
+                        {Math.round(selectedValidation.validation.compliance_rate || 0)}%
+                      </div>
+                      <div className="score-label">Compliance</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="validation-stats">
+                  <div className="stat-box">
+                    <div className="stat-icon compliant">✅</div>
+                    <div className="stat-info">
+                      <div className="stat-number">{selectedValidation.validation.compliant_apis || 0}</div>
+                      <div className="stat-text">Compliant APIs</div>
+                    </div>
+                  </div>
+                  <div className="stat-box">
+                    <div className="stat-icon non-compliant">❌</div>
+                    <div className="stat-info">
+                      <div className="stat-number">{selectedValidation.validation.non_compliant_apis || 0}</div>
+                      <div className="stat-text">Non-compliant APIs</div>
+                    </div>
+                  </div>
+                  <div className="stat-box">
+                    <div className="stat-icon total">📊</div>
+                    <div className="stat-info">
+                      <div className="stat-number">{selectedValidation.validation.total_apis_checked || 0}</div>
+                      <div className="stat-text">Total APIs Checked</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {selectedValidation.validation.violations && selectedValidation.validation.violations.length > 0 && (
+                <div className="validation-section">
+                  <h3>Policy Violations</h3>
+                  <div className="violations-list">
+                    {selectedValidation.validation.violations.map((violation, index) => (
+                      <div key={index} className="violation-item">
+                        <div className="violation-header">
+                          <span className="violation-severity severity-{violation.severity || 'medium'}">
+                            {violation.severity === 'high' ? '🔴' : violation.severity === 'medium' ? '🟡' : '🟢'}
+                            {violation.severity || 'medium'}
+                          </span>
+                          <span className="violation-api">{violation.api_name}</span>
+                        </div>
+                        <div className="violation-description">
+                          {violation.description || violation.message}
+                        </div>
+                        {violation.rule && (
+                          <div className="violation-rule">
+                            Rule: {violation.rule}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {selectedValidation.validation.recommendations && selectedValidation.validation.recommendations.length > 0 && (
+                <div className="validation-section">
+                  <h3>Recommendations</h3>
+                  <ul className="recommendations-list">
+                    {selectedValidation.validation.recommendations.map((rec, index) => (
+                      <li key={index}>{rec}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <div className="validation-meta">
+                <div className="meta-item">
+                  <span className="meta-label">Last Validated:</span>
+                  <span className="meta-value">
+                    {selectedValidation.validation.validated_at 
+                      ? new Date(selectedValidation.validation.validated_at).toLocaleString()
+                      : 'Never'}
+                  </span>
+                </div>
+                <div className="meta-item">
+                  <span className="meta-label">Validation Duration:</span>
+                  <span className="meta-value">
+                    {selectedValidation.validation.duration 
+                      ? `${selectedValidation.validation.duration}ms`
+                      : 'N/A'}
+                  </span>
+                </div>
+              </div>
+            </div>
+            
+            <div className="form-actions">
+              <button
+                type="button"
+                onClick={handleCloseValidationModal}
+                className="btn-secondary"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  handleCloseValidationModal();
+                  handleValidatePolicy(selectedValidation.policy.id);
+                }}
+                className="btn-primary"
+              >
+                Re-validate
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Create Policy Modal */}
       {showCreateForm && (
@@ -1117,7 +1543,9 @@ const Policies = () => {
         </div>
       ) : viewMode === 'grid' ? (
         <div className="policies-grid">
-          {sortedPolicies.map((policy) => (
+          {sortedPolicies.map((policy) => {
+            const validationBadge = getValidationBadge(policy.id);
+            return (
             <div key={policy.id} className="policy-card">
               <div className="policy-card-header">
                 <div className="policy-icon">
@@ -1145,6 +1573,15 @@ const Policies = () => {
                   </span>
                 </div>
 
+                {/* Validation Status */}
+                <div className={`validation-status-badge ${validationBadge.className}`}>
+                  <span className="validation-icon">{validationBadge.icon}</span>
+                  <span className="validation-label">{validationBadge.label}</span>
+                  {validationBadge.rate !== undefined && (
+                    <span className="validation-rate">{Math.round(validationBadge.rate)}%</span>
+                  )}
+                </div>
+
                 {policy.tags && policy.tags.length > 0 && (
                   <div className="policy-card-tags">
                     {policy.tags.slice(0, 3).map((tag, index) => (
@@ -1167,6 +1604,21 @@ const Policies = () => {
                 </button>
                 <button 
                   className="btn-text"
+                  onClick={() => handleShowValidationDetails(policy)}
+                  title="View validation results"
+                >
+                  Validation
+                </button>
+                <button 
+                  className="btn-text"
+                  onClick={() => handleValidatePolicy(policy.id)}
+                  title="Validate policy"
+                  disabled={isValidating}
+                >
+                  {isValidating ? '...' : 'Check'}
+                </button>
+                <button 
+                  className="btn-text"
                   onClick={() => handleOpenEditForm(policy)}
                   title="Edit policy"
                 >
@@ -1181,7 +1633,8 @@ const Policies = () => {
                 </button>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       ) : (
         <div className="policies-list">
@@ -1196,12 +1649,15 @@ const Policies = () => {
                 <th onClick={() => handleSort('status')} className="sortable">
                   Status {getSortIcon('status')}
                 </th>
+                <th>Validation</th>
                 <th>Owner</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {sortedPolicies.map((policy) => (
+              {sortedPolicies.map((policy) => {
+                const validationBadge = getValidationBadge(policy.id);
+                return (
                 <tr key={policy.id} className="policy-row">
                   <td>
                     <div className="policy-cell-name">
@@ -1226,6 +1682,20 @@ const Policies = () => {
                       {policy.status || 'Unknown'}
                     </span>
                   </td>
+                  <td>
+                    <div 
+                      className={`validation-status-inline ${validationBadge.className}`}
+                      onClick={() => handleShowValidationDetails(policy)}
+                      style={{ cursor: 'pointer' }}
+                      title="Click to view details"
+                    >
+                      <span className="validation-icon">{validationBadge.icon}</span>
+                      <span className="validation-label">{validationBadge.label}</span>
+                      {validationBadge.rate !== undefined && (
+                        <span className="validation-rate">{Math.round(validationBadge.rate)}%</span>
+                      )}
+                    </div>
+                  </td>
                   <td>{policy.owner || <span className="text-muted">—</span>}</td>
                   <td>
                     <div className="table-actions">
@@ -1235,6 +1705,14 @@ const Policies = () => {
                         title="View details"
                       >
                         👁️
+                      </button>
+                      <button 
+                        className="btn-icon" 
+                        onClick={() => handleValidatePolicy(policy.id)}
+                        title="Validate policy"
+                        disabled={isValidating}
+                      >
+                        🔍
                       </button>
                       <button 
                         className="btn-icon" 
@@ -1253,7 +1731,8 @@ const Policies = () => {
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

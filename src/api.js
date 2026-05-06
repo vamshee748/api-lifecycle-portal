@@ -201,4 +201,101 @@ export const createChange = async (changeData) => {
   }
 };
 
+/**
+ * Validate a policy against APIs
+ * @param {string|number} policyId - The policy ID to validate
+ * @returns {Promise} - Promise resolving to validation results
+ */
+export const validatePolicy = async (policyId) => {
+  try {
+    const response = await api.post(`/api/v1/policies/${policyId}/validate`);
+    return response.data;
+  } catch (error) {
+    if (error.response) {
+      throw new Error(error.response.data?.message || 'Failed to validate policy');
+    } else if (error.request) {
+      throw new Error('No response from server. Please check your connection.');
+    } else {
+      throw error;
+    }
+  }
+};
+
+/**
+ * Get validation status for all policies
+ * @returns {Promise} - Promise resolving to validation status for all policies
+ */
+export const getAllPolicyValidations = async () => {
+  try {
+    const response = await api.get('/api/v1/policies/validations');
+    return response.data;
+  } catch (error) {
+    if (error.response) {
+      throw new Error(error.response.data?.message || 'Failed to fetch validation status');
+    } else if (error.request) {
+      throw new Error('No response from server. Please check your connection.');
+    } else {
+      throw error;
+    }
+  }
+};
+
+/**
+ * Get validation results for a specific policy
+ * @param {string|number} policyId - The policy ID
+ * @returns {Promise} - Promise resolving to validation results
+ */
+export const getPolicyValidation = async (policyId) => {
+  try {
+    const response = await api.get(`/api/v1/policies/${policyId}/validation`);
+    return response.data;
+  } catch (error) {
+    if (error.response) {
+      throw new Error(error.response.data?.message || 'Failed to fetch validation results');
+    } else if (error.request) {
+      throw new Error('No response from server. Please check your connection.');
+    } else {
+      throw error;
+    }
+  }
+};
+
+/**
+ * Get validation summary statistics
+ * @returns {Promise} - Promise resolving to validation summary
+ */
+export const getValidationSummary = async () => {
+  try {
+    const response = await api.get('/api/v1/policies/validation/summary');
+    return response.data;
+  } catch (error) {
+    if (error.response) {
+      throw new Error(error.response.data?.message || 'Failed to fetch validation summary');
+    } else if (error.request) {
+      throw new Error('No response from server. Please check your connection.');
+    } else {
+      throw error;
+    }
+  }
+};
+
+/**
+ * Validate all policies
+ * @returns {Promise} - Promise resolving to validation results for all policies
+ */
+export const validateAllPolicies = async () => {
+  try {
+    const response = await api.post('/api/v1/policies/validate/all');
+    return response.data;
+  } catch (error) {
+    if (error.response) {
+      throw new Error(error.response.data?.message || 'Failed to validate all policies');
+    } else if (error.request) {
+      throw new Error('No response from server. Please check your connection.');
+    } else {
+      throw error;
+    }
+  }
+};
+
 export default api;

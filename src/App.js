@@ -8,6 +8,7 @@ import ApiList from './pages/ApiList';
 import ApiDetails from './pages/ApiDetails';
 import Changes from './pages/Changes';
 import Policies from './pages/Policies';
+import Analytics from './pages/Analytics';
 
 function App() {
   return (
@@ -24,6 +25,7 @@ function App() {
               <Route path="/api/:id" element={<ApiDetails />} />
               <Route path="/changes" element={<Changes />} />
               <Route path="/policies" element={<Policies />} />
+              <Route path="/analytics" element={<Analytics />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </main>

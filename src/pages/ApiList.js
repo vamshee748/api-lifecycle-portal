@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api, { createApi, updateApi, deleteApi } from '../api';
 import Loader from '../components/Loader';
+import useDebounce from '../hooks/useDebounce';
 
 const ApiList = () => {
   const [apis, setApis] = useState([]);
@@ -25,6 +26,9 @@ const ApiList = () => {
   const [deletingApiName, setDeletingApiName] = useState('');
   const [sortField, setSortField] = useState('name');
   const [sortDirection, setSortDirection] = useState('asc');
+  
+  // Debounce search query to avoid excessive filtering
+  const debouncedSearchQuery = useDebounce(searchQuery, 300);
   
   // Form state
   const [formData, setFormData] = useState({
@@ -317,38 +321,42 @@ const ApiList = () => {
     }
   };
 
-  // Filter and search logic
-  const filteredApis = apis.filter((apiItem) => {
-    const matchesSearch = apiItem.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         apiItem.description?.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesFilter = filterStatus === 'all' || apiItem.status === filterStatus;
-    return matchesSearch && matchesFilter;
-  });
+  // Filter and search logic with memoization for performance
+  const filteredApis = useMemo(() => {
+    return apis.filter((apiItem) => {
+      const matchesSearch = apiItem.name?.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
+                           apiItem.description?.toLowerCase().includes(debouncedSearchQuery.toLowerCase());
+      const matchesFilter = filterStatus === 'all' || apiItem.status === filterStatus;
+      return matchesSearch && matchesFilter;
+    });
+  }, [apis, debouncedSearchQuery, filterStatus]);
 
-  // Sort the filtered APIs
-  const sortedApis = [...filteredApis].sort((a, b) => {
-    let aValue = a[sortField];
-    let bValue = b[sortField];
+  // Sort the filtered APIs with memoization
+  const sortedApis = useMemo(() => {
+    return [...filteredApis].sort((a, b) => {
+      let aValue = a[sortField];
+      let bValue = b[sortField];
 
-    // Handle null/undefined values
-    if (aValue == null) aValue = '';
-    if (bValue == null) bValue = '';
+      // Handle null/undefined values
+      if (aValue == null) aValue = '';
+      if (bValue == null) bValue = '';
 
-    // Handle different data types
-    if (sortField === 'updated_at' || sortField === 'created_at') {
-      aValue = new Date(aValue).getTime();
-      bValue = new Date(bValue).getTime();
-    } else if (typeof aValue === 'string') {
-      aValue = aValue.toLowerCase();
-      bValue = bValue.toLowerCase();
-    }
+      // Handle different data types
+      if (sortField === 'updated_at' || sortField === 'created_at') {
+        aValue = new Date(aValue).getTime();
+        bValue = new Date(bValue).getTime();
+      } else if (typeof aValue === 'string') {
+        aValue = aValue.toLowerCase();
+        bValue = bValue.toLowerCase();
+      }
 
-    if (sortDirection === 'asc') {
-      return aValue > bValue ? 1 : aValue < bValue ? -1 : 0;
-    } else {
-      return aValue < bValue ? 1 : aValue > bValue ? -1 : 0;
-    }
-  });
+      if (sortDirection === 'asc') {
+        return aValue > bValue ? 1 : aValue < bValue ? -1 : 0;
+      } else {
+        return aValue < bValue ? 1 : aValue > bValue ? -1 : 0;
+      }
+    });
+  }, [filteredApis, sortField, sortDirection]);
 
   if (loading) {
     return (

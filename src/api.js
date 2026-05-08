@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { getToken, removeToken, isTokenExpired } from './utils/auth';
 
 // Base API URL - Update this based on your backend server
 const BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
@@ -6,7 +7,7 @@ const BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 // Create axios instance with default config
 const api = axios.create({
   baseURL: BASE_URL,
-  timeout: 10000,
+  timeout: 30000, // Increased timeout for production
   headers: {
     'Content-Type': 'application/json',
   },
@@ -15,10 +16,18 @@ const api = axios.create({
 // Request interceptor - Add auth token to requests
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('authToken');
+    // Check if token is expired before making request
+    if (isTokenExpired()) {
+      removeToken();
+      window.location.href = '/login';
+      return Promise.reject(new Error('Token expired'));
+    }
+
+    const token = getToken();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    
     return config;
   },
   (error) => {
@@ -31,18 +40,33 @@ api.interceptors.response.use(
   (response) => {
     return response;
   },
-  (error) => {
+  async (error) => {
+    const originalRequest = error.config;
+
     if (error.response) {
       // Handle specific status codes
-      if (error.response.status === 401) {
+      if (error.response.status === 401 && !originalRequest._retry) {
         // Unauthorized - clear token and redirect to login
-        localStorage.removeItem('authToken');
+        removeToken();
         window.location.href = '/login';
       }
+      
       if (error.response.status === 403) {
-        console.error('Access forbidden');
+        console.error('Access forbidden:', error.response.data?.message);
       }
+
+      if (error.response.status === 429) {
+        console.error('Rate limit exceeded. Please try again later.');
+      }
+
+      if (error.response.status >= 500) {
+        console.error('Server error:', error.response.data?.message);
+      }
+    } else if (error.request) {
+      // Request made but no response received
+      console.error('Network error: No response from server');
     }
+    
     return Promise.reject(error);
   }
 );

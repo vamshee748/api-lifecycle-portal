@@ -1,18 +1,66 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
+import { useAuthContext } from '../context/AuthContext';
 
 const Navbar = () => {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const { user, logout } = useAuthContext();
+  const dropdownRef = useRef(null);
 
   const toggleUserMenu = () => {
     setUserMenuOpen(!userMenuOpen);
+  };
+
+  const handleLogout = () => {
+    logout();
+  };
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setUserMenuOpen(false);
+      }
+    };
+
+    if (userMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [userMenuOpen]);
+
+  // Get user initials for avatar
+  const getUserInitials = () => {
+    if (!user) return 'U';
+    
+    if (user.name) {
+      const names = user.name.split(' ');
+      if (names.length >= 2) {
+        return `${names[0][0]}${names[1][0]}`.toUpperCase();
+      }
+      return user.name[0].toUpperCase();
+    }
+    
+    if (user.email) {
+      return user.email[0].toUpperCase();
+    }
+    
+    return 'U';
+  };
+
+  const getUserDisplayName = () => {
+    if (!user) return 'User';
+    return user.name || user.email || 'User';
   };
 
   return (
     <nav className="navbar">
       <div className="navbar-container">
         <Link to="/" className="navbar-brand">
-          <span className="brand-icon">🔄</span>
+          <span className="brand-icon">🚀</span>
           <span className="brand-text">API Lifecycle Portal</span>
         </Link>
 
@@ -22,24 +70,40 @@ const Navbar = () => {
             <span className="notification-badge">3</span>
           </button>
 
-          <div className="navbar-user">
+          <div className="navbar-user" ref={dropdownRef}>
             <button 
               className="user-menu-button"
               onClick={toggleUserMenu}
               aria-expanded={userMenuOpen}
               aria-haspopup="true"
             >
-              <div className="user-avatar">U</div>
-              <span className="user-name">User</span>
-              <span className="user-dropdown-icon">▼</span>
+              <div className="user-avatar">{getUserInitials()}</div>
+              <span className="user-name">{getUserDisplayName()}</span>
+              <span className={`user-dropdown-icon ${userMenuOpen ? 'open' : ''}`}>▼</span>
             </button>
 
             {userMenuOpen && (
               <div className="user-dropdown-menu">
-                <Link to="/profile" className="dropdown-item">Profile</Link>
-                <Link to="/settings" className="dropdown-item">Settings</Link>
+                <div className="dropdown-header">
+                  <div className="dropdown-user-info">
+                    <p className="dropdown-user-name">{getUserDisplayName()}</p>
+                    {user?.email && <p className="dropdown-user-email">{user.email}</p>}
+                  </div>
+                </div>
                 <hr className="dropdown-divider" />
-                <button className="dropdown-item">Logout</button>
+                <Link to="/profile" className="dropdown-item" onClick={() => setUserMenuOpen(false)}>
+                  <span className="dropdown-item-icon">👤</span>
+                  Profile
+                </Link>
+                <Link to="/settings" className="dropdown-item" onClick={() => setUserMenuOpen(false)}>
+                  <span className="dropdown-item-icon">⚙️</span>
+                  Settings
+                </Link>
+                <hr className="dropdown-divider" />
+                <button className="dropdown-item logout-item" onClick={handleLogout}>
+                  <span className="dropdown-item-icon">🚪</span>
+                  Logout
+                </button>
               </div>
             )}
           </div>

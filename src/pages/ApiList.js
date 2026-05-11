@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import api, { createApi, updateApi, deleteApi } from '../api';
 import Loader from '../components/Loader';
 import useDebounce from '../hooks/useDebounce';
+import { useLoader } from '../context/LoaderContext';
 
 const ApiList = () => {
   const [apis, setApis] = useState([]);
@@ -26,6 +27,9 @@ const ApiList = () => {
   const [deletingApiName, setDeletingApiName] = useState('');
   const [sortField, setSortField] = useState('name');
   const [sortDirection, setSortDirection] = useState('asc');
+  
+  // Global loader for critical operations
+  const { showLoader, hideLoader } = useLoader();
   
   // Debounce search query to avoid excessive filtering
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
@@ -172,6 +176,8 @@ const ApiList = () => {
     setCreateSuccess(false);
     
     try {
+      showLoader('Creating API...');
+      
       // Convert tags string to array
       const tagsArray = formData.tags
         ? formData.tags.split(',').map(tag => tag.trim()).filter(tag => tag)
@@ -200,6 +206,7 @@ const ApiList = () => {
       console.error('Error creating API:', err);
     } finally {
       setIsCreating(false);
+      hideLoader();
     }
   };
 
@@ -244,6 +251,8 @@ const ApiList = () => {
     setEditSuccess(false);
     
     try {
+      showLoader('Updating API...');
+      
       // Convert tags string to array
       const tagsArray = formData.tags
         ? formData.tags.split(',').map(tag => tag.trim()).filter(tag => tag)
@@ -272,6 +281,7 @@ const ApiList = () => {
       console.error('Error updating API:', err);
     } finally {
       setIsEditing(false);
+      hideLoader();
     }
   };
 
@@ -302,6 +312,8 @@ const ApiList = () => {
     setDeleteError(null);
 
     try {
+      showLoader('Deleting API...');
+      
       await deleteApi(deletingApiId);
       
       // Refresh the API list
@@ -318,6 +330,7 @@ const ApiList = () => {
       console.error('Error deleting API:', err);
     } finally {
       setIsDeleting(false);
+      hideLoader();
     }
   };
 

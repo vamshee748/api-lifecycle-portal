@@ -2,9 +2,11 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import './styles.css';
 import { AuthProvider } from './context/AuthContext';
+import { LoaderProvider, useLoader } from './context/LoaderContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Navbar from './components/Navbar';
 import Sidebar from './components/Sidebar';
+import Loader from './components/Loader';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import ApiList from './pages/ApiList';
@@ -13,41 +15,57 @@ import Changes from './pages/Changes';
 import Policies from './pages/Policies';
 import Analytics from './pages/Analytics';
 
+// Global Loader Overlay Component
+const GlobalLoader = () => {
+  const { isLoading, loadingText } = useLoader();
+
+  if (!isLoading) return null;
+
+  return (
+    <div className="global-loader-overlay">
+      <Loader size="large" text={loadingText} />
+    </div>
+  );
+};
+
 function App() {
   return (
     <Router>
       <AuthProvider>
-        <Routes>
-          {/* Public Routes */}
-          <Route path="/login" element={<Login />} />
-          
-          {/* Protected Routes */}
-          <Route
-            path="/*"
-            element={
-              <ProtectedRoute>
-                <div className="App">
-                  <Navbar />
-                  <div className="app-layout">
-                    <Sidebar />
-                    <main className="main-content">
-                      <Routes>
-                        <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                        <Route path="/dashboard" element={<Dashboard />} />
-                        <Route path="/apis" element={<ApiList />} />
-                        <Route path="/api/:id" element={<ApiDetails />} />
-                        <Route path="/changes" element={<Changes />} />
-                        <Route path="/policies" element={<Policies />} />
-                        <Route path="/analytics" element={<Analytics />} />
-                        <Route path="*" element={<NotFound />} />
-                      </Routes>
-                    </main>
+        <LoaderProvider>
+          <GlobalLoader />
+          <Routes>
+            {/* Public Routes */}
+            <Route path="/login" element={<Login />} />
+            
+            {/* Protected Routes */}
+            <Route
+              path="/*"
+              element={
+                <ProtectedRoute>
+                  <div className="App">
+                    <Navbar />
+                    <div className="app-layout">
+                      <Sidebar />
+                      <main className="main-content">
+                        <Routes>
+                          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                          <Route path="/dashboard" element={<Dashboard />} />
+                          <Route path="/apis" element={<ApiList />} />
+                          <Route path="/api/:id" element={<ApiDetails />} />
+                          <Route path="/changes" element={<Changes />} />
+                          <Route path="/policies" element={<Policies />} />
+                          <Route path="/analytics" element={<Analytics />} />
+                          <Route path="*" element={<NotFound />} />
+                        </Routes>
+                      </main>
+                    </div>
                   </div>
-                </div>
-              </ProtectedRoute>
-            }
-          />
-        </Routes>
+                </ProtectedRoute>
+              }
+            />
+          </Routes>
+        </LoaderProvider>
       </AuthProvider>
     </Router>
   );

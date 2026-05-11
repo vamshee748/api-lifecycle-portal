@@ -65,6 +65,17 @@ const Navbar = () => {
         </Link>
 
         <div className="navbar-actions">
+          <a 
+            href={`${process.env.REACT_APP_API_URL || 'http://localhost:8000'}/docs`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="navbar-swagger-link"
+            title="Open Swagger UI Documentation"
+          >
+            <span className="swagger-icon">📚</span>
+            <span className="swagger-text">API Docs</span>
+          </a>
+
           <button className="navbar-notification" aria-label="Notifications">
             <span className="notification-icon">🔔</span>
             <span className="notification-badge">3</span>

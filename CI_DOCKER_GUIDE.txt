@@ -1,0 +1,179 @@
+# CI/CD and Docker Configuration - Quick Reference
+
+## Environment Configuration
+
+### Development (Local)
+```bash
+cp .env.development.example .env
+npm start
+# API URL: http://localhost:8000
+```
+
+### Docker (Local)
+```bash
+cp .env.docker .env
+docker-compose up -d
+# Access: http://localhost:3000
+# API proxied through nginx: /api -> backend:8000
+```
+
+### Production
+```bash
+cp .env.production.example .env.production
+npm run build
+# API URL: /api (relative path for nginx proxy)
+```
+
+## Quick Commands
+
+### Local Development
+```bash
+npm install          # Install dependencies
+npm start            # Start dev server (port 3000)
+npm test            # Run tests
+npm run build       # Production build
+```
+
+### Docker Commands
+```bash
+# Build image
+docker build -t api-lifecycle-portal:latest .
+
+# Run container
+docker run -p 3000:80 api-lifecycle-portal:latest
+
+# Docker Compose
+docker-compose up -d              # Start services
+docker-compose down               # Stop services
+docker-compose logs -f frontend   # View logs
+docker-compose ps                 # Check status
+```
+
+### CI/CD Scripts
+```bash
+npm run build:ci    # CI-optimized build
+npm run test:ci     # CI-optimized tests
+./scripts/verify-build.sh   # Verify build (Linux/Mac)
+scripts\verify-build.bat    # Verify build (Windows)
+```
+
+## API URL Configuration Priority
+
+1. **REACT_APP_API_URL environment variable** (highest priority)
+2. **Production mode**: Uses `/api` (relative path)
+3. **Development fallback**: Uses `http://localhost:8000`
+
+### Example Configurations
+
+**Development:**
+```env
+REACT_APP_API_URL=http://localhost:8000
+```
+
+**Docker with nginx proxy:**
+```env
+REACT_APP_API_URL=/api
+```
+
+**Production with external API:**
+```env
+REACT_APP_API_URL=https://api.yourdomain.com
+```
+
+## Docker Build Arguments
+
+```bash
+# Custom API URL at build time
+docker build --build-arg REACT_APP_API_URL=https://api.example.com -t app:latest .
+
+# Production build
+docker build --build-arg REACT_APP_API_URL=/api -t app:prod .
+```
+
+## GitHub Actions CI/CD
+
+The pipeline automatically:
+1. Runs tests on push/PR
+2. Creates production build
+3. Builds Docker image (main branch only)
+4. Runs security audits
+
+### Manual Trigger
+Go to Actions tab → CI/CD Pipeline → Run workflow
+
+## Environment Variables Reference
+
+### Build-time (React)
+- `REACT_APP_API_URL`: Backend API base URL
+- `REACT_APP_ENV`: Environment name
+- `REACT_APP_DEBUG`: Enable debug mode
+- `GENERATE_SOURCEMAP`: Generate source maps
+- `SKIP_PREFLIGHT_CHECK`: Skip CRA preflight check
+
+### Runtime (Docker/nginx)
+- `API_BACKEND_URL`: Backend URL for nginx proxy
+- `NODE_ENV`: Node environment (production/development)
+
+## Troubleshooting
+
+### Build fails with "MODULE_NOT_FOUND"
+```bash
+rm -rf node_modules package-lock.json
+npm install
+```
+
+### Docker image too large
+- Uses multi-stage build (already optimized)
+- Build stage: ~1GB
+- Final image: ~50MB
+
+### API connection fails in Docker
+1. Check `API_BACKEND_URL` in docker-compose.yml
+2. Verify backend service is running
+3. Check Docker network connectivity:
+   ```bash
+   docker exec -it frontend wget -O- http://backend:8000/health
+   ```
+
+### CI build fails
+1. Check GitHub Actions logs
+2. Run locally: `npm run build:ci`
+3. Verify environment variables are set
+
+## File Structure
+
+```
+.
+├── .env.example                 # Example environment config
+├── .env.development.example     # Development config
+├── .env.production.example      # Production config
+├── .env.docker                  # Docker config
+├── Dockerfile                   # Multi-stage build
+├── docker-compose.yml           # Local Docker setup
+├── nginx.conf                   # Nginx configuration
+├── docker-entrypoint.sh         # Docker startup script
+├── .dockerignore                # Docker build exclusions
+├── .github/
+│   └── workflows/
+│       └── ci-cd.yml           # CI/CD pipeline
+└── scripts/
+    ├── verify-build.sh         # Build verification (Unix)
+    └── verify-build.bat        # Build verification (Windows)
+```
+
+## Best Practices
+
+1. **Never commit .env files** (only .env.example)
+2. **Use relative paths in production** (REACT_APP_API_URL=/api)
+3. **Disable source maps in production** (GENERATE_SOURCEMAP=false)
+4. **Use docker-compose for local development**
+5. **Run security audits regularly** (npm audit)
+6. **Keep dependencies updated** (npm outdated)
+7. **Test Docker build before deploying**
+
+## Support
+
+For detailed documentation:
+- Docker: See DOCKER_DEPLOYMENT.txt
+- API Configuration: See src/api.js and src/api-enhanced.js
+- CI/CD: See .github/workflows/ci-cd.yml

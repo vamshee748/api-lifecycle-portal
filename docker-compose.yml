@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  # Frontend service
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        # Use environment variable or default to /api
+        REACT_APP_API_URL: ${REACT_APP_API_URL:-/api}
+    container_name: api-portal-frontend
+    ports:
+      - "3000:80"
+    environment:
+      - NODE_ENV=production
+    networks:
+      - api-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Backend service (placeholder - replace with actual backend)
+  # Uncomment and configure when backend is ready
+  # backend:
+  #   image: your-backend-image:latest
+  #   container_name: api-portal-backend
+  #   ports:
+  #     - "8000:8000"
+  #   environment:
+  #     - DATABASE_URL=${DATABASE_URL}
+  #     - JWT_SECRET=${JWT_SECRET}
+  #   networks:
+  #     - api-network
+  #   restart: unless-stopped
+
+networks:
+  api-network:
+    driver: bridge
+
+# Volumes for persistent data (if needed)
+volumes:
+  api-data:
+    driver: local

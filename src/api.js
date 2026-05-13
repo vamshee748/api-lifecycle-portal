@@ -1,8 +1,25 @@
 import axios from 'axios';
 import { getToken, removeToken, isTokenExpired } from './utils/auth';
 
-// Base API URL - Update this based on your backend server
-const BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+// Base API URL Configuration
+// Supports multiple environments: development, Docker, CI/CD, production
+// Priority: REACT_APP_API_URL env var > relative path /api > localhost fallback
+const getBaseURL = () => {
+  // Use environment variable if provided
+  if (process.env.REACT_APP_API_URL) {
+    return process.env.REACT_APP_API_URL;
+  }
+  
+  // In production build or Docker, use relative path for nginx proxy
+  if (process.env.NODE_ENV === 'production') {
+    return '/api';
+  }
+  
+  // Development fallback
+  return 'http://localhost:8000';
+};
+
+const BASE_URL = getBaseURL();
 
 // Create axios instance with default config
 const api = axios.create({

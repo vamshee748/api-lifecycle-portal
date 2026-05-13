@@ -1,0 +1,350 @@
+# Docker Deployment Guide
+
+## Quick Start
+
+### Development with Docker Compose
+
+1. **Build and start all services:**
+   ```bash
+   docker-compose up -d
+   ```
+
+2. **Access the application:**
+   - Frontend: http://localhost:3000
+   - Backend API: http://localhost:8000 (if configured)
+
+3. **Stop services:**
+   ```bash
+   docker-compose down
+   ```
+
+### Production Docker Build
+
+1. **Build the Docker image:**
+   ```bash
+   docker build -t api-lifecycle-portal:latest .
+   ```
+
+2. **Run the container:**
+   ```bash
+   docker run -d \
+     -p 80:80 \
+     --name api-portal-frontend \
+     -e API_BACKEND_URL=http://your-backend:8000 \
+     api-lifecycle-portal:latest
+   ```
+
+3. **With custom API URL at build time:**
+   ```bash
+   docker build \
+     --build-arg REACT_APP_API_URL=https://api.yourdomain.com \
+     -t api-lifecycle-portal:latest .
+   ```
+
+## Environment Configuration
+
+### Environment Variables
+
+**Build-time variables (ARG):**
+- `REACT_APP_API_URL`: API base URL (default: /api)
+
+**Runtime variables (ENV):**
+- `API_BACKEND_URL`: Backend URL for nginx proxy (default: http://backend:8000)
+- `NODE_ENV`: Environment mode (production)
+
+### Environment Files
+
+Copy and configure the appropriate environment file:
+
+```bash
+# Development
+cp .env.development.example .env
+
+# Production
+cp .env.production.example .env.production
+
+# Docker
+cp .env.docker .env
+```
+
+## Docker Compose Configuration
+
+### Basic Setup
+
+```yaml
+version: '3.8'
+
+services:
+  frontend:
+    build: .
+    ports:
+      - "3000:80"
+    environment:
+      - API_BACKEND_URL=http://backend:8000
+```
+
+### With Backend Service
+
+```yaml
+services:
+  frontend:
+    build: .
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    environment:
+      - API_BACKEND_URL=http://backend:8000
+  
+  backend:
+    image: your-backend:latest
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://user:pass@db:5432/dbname
+```
+
+## CI/CD Integration
+
+### GitHub Actions
+
+The CI/CD pipeline is configured in `.github/workflows/ci-cd.yml`:
+
+1. **Test**: Runs linting and tests
+2. **Build**: Creates production build
+3. **Docker**: Builds and pushes Docker image
+4. **Security**: Runs security audits
+
+### Manual CI Build
+
+```bash
+npm run build:ci
+```
+
+### Running Tests in CI
+
+```bash
+npm run test:ci
+```
+
+## Production Deployment
+
+### Using Docker
+
+1. **Pull the image:**
+   ```bash
+   docker pull ghcr.io/your-org/api-lifecycle-portal:latest
+   ```
+
+2. **Run with custom configuration:**
+   ```bash
+   docker run -d \
+     -p 80:80 \
+     --name api-portal \
+     --restart unless-stopped \
+     -e API_BACKEND_URL=http://api-backend:8000 \
+     ghcr.io/your-org/api-lifecycle-portal:latest
+   ```
+
+### Using Kubernetes
+
+Example deployment:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-portal-frontend
+spec:
+  replicas: 3
+  template:
+    spec:
+      containers:
+      - name: frontend
+        image: ghcr.io/your-org/api-lifecycle-portal:latest
+        ports:
+        - containerPort: 80
+        env:
+        - name: API_BACKEND_URL
+          value: "http://api-backend-service:8000"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 5
+```
+
+## Nginx Configuration
+
+### API Proxy
+
+The nginx configuration includes an API proxy that forwards `/api/*` requests to the backend:
+
+```nginx
+location /api/ {
+    proxy_pass http://backend:8000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+}
+```
+
+### Custom nginx Configuration
+
+To use a custom nginx config:
+
+1. Create your config file: `custom-nginx.conf`
+2. Mount it in docker-compose:
+   ```yaml
+   volumes:
+     - ./custom-nginx.conf:/etc/nginx/conf.d/default.conf
+   ```
+
+## Troubleshooting
+
+### Container won't start
+
+Check logs:
+```bash
+docker logs api-portal-frontend
+```
+
+### API connection issues
+
+1. Verify backend URL:
+   ```bash
+   docker exec -it api-portal-frontend env | grep API
+   ```
+
+2. Test connectivity:
+   ```bash
+   docker exec -it api-portal-frontend wget -O- http://backend:8000/health
+   ```
+
+### Build failures
+
+Clear Docker cache:
+```bash
+docker builder prune -a
+docker build --no-cache -t api-lifecycle-portal:latest .
+```
+
+## Performance Optimization
+
+### Multi-stage Build
+
+The Dockerfile uses multi-stage builds to minimize image size:
+- Build stage: Compiles the React app
+- Production stage: Only includes compiled assets + nginx
+
+### Caching Strategy
+
+- Static assets: Cached for 1 year
+- HTML files: No cache (for updates)
+- API responses: Proxied without caching
+
+### Resource Limits
+
+Add resource limits in docker-compose:
+
+```yaml
+services:
+  frontend:
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+```
+
+## Security Best Practices
+
+1. **Use specific versions:**
+   ```dockerfile
+   FROM node:18-alpine AS build
+   FROM nginx:1.25-alpine
+   ```
+
+2. **Run as non-root (if needed):**
+   ```dockerfile
+   RUN addgroup -g 1001 -S nodejs && adduser -S nodejs -u 1001
+   USER nodejs
+   ```
+
+3. **Security headers:**
+   - Already configured in nginx.conf
+   - X-Frame-Options, X-Content-Type-Options, etc.
+
+4. **Regular updates:**
+   ```bash
+   docker pull node:18-alpine
+   docker pull nginx:1.25-alpine
+   docker build --pull -t api-lifecycle-portal:latest .
+   ```
+
+## Monitoring and Health Checks
+
+### Docker Health Check
+
+Built into the Dockerfile:
+```dockerfile
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:80/ || exit 1
+```
+
+### Check health status:
+```bash
+docker ps
+# Look for "healthy" status
+```
+
+### Custom health endpoint
+
+Add to nginx.conf:
+```nginx
+location /health {
+    access_log off;
+    return 200 "healthy\n";
+    add_header Content-Type text/plain;
+}
+```
+
+## Scaling
+
+### Horizontal Scaling
+
+With docker-compose:
+```bash
+docker-compose up -d --scale frontend=3
+```
+
+With load balancer:
+```yaml
+services:
+  nginx-lb:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./lb-nginx.conf:/etc/nginx/nginx.conf
+  
+  frontend:
+    build: .
+    deploy:
+      replicas: 3
+```
+
+## Additional Resources
+
+- Docker Documentation: https://docs.docker.com
+- React Build Documentation: https://create-react-app.dev/docs/deployment
+- Nginx Documentation: https://nginx.org/en/docs/

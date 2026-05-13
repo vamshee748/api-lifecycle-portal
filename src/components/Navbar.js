@@ -56,6 +56,19 @@ const Navbar = () => {
     return user.name || user.email || 'User';
   };
 
+  // Get Swagger UI URL based on environment
+  const getSwaggerUrl = () => {
+    const apiUrl = process.env.REACT_APP_API_URL;
+    
+    // If API URL is relative path (Docker/production), use relative /api/docs
+    if (!apiUrl || apiUrl.startsWith('/')) {
+      return '/api/docs';
+    }
+    
+    // Otherwise, append /docs to the API URL
+    return `${apiUrl}/docs`;
+  };
+
   return (
     <nav className="navbar">
       <div className="navbar-container">
@@ -66,7 +79,7 @@ const Navbar = () => {
 
         <div className="navbar-actions">
           <a 
-            href={`${process.env.REACT_APP_API_URL || 'http://localhost:8000'}/docs`}
+            href={getSwaggerUrl()}
             target="_blank"
             rel="noopener noreferrer"
             className="navbar-swagger-link"

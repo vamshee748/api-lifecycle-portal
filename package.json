@@ -15,8 +15,14 @@
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
+    "build:ci": "CI=true GENERATE_SOURCEMAP=false react-scripts build",
     "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "test:ci": "CI=true react-scripts test --watchAll=false --passWithNoTests --coverage",
+    "eject": "react-scripts eject",
+    "docker:build": "docker build -t api-lifecycle-portal:latest .",
+    "docker:run": "docker run -p 3000:80 api-lifecycle-portal:latest",
+    "docker:compose": "docker-compose up -d",
+    "docker:compose:down": "docker-compose down"
   },
   "eslintConfig": {
     "extends": [
